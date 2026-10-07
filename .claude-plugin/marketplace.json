@@ -1,0 +1,5 @@
+{
+  "name": "ronikormis-mods",
+  "owner": { "name": "RoniKormis" },
+  "plugins": [{ "name": "context-band", "source": "./context-band" }]
+}
