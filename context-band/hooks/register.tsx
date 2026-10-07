@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register, SessionRateLimit } from 'claude-code'
 
 import type { Handoff, Usage } from '../types'
-import { bar, isHandoffFile, mmss, osa, sh } from './util'
+import { bar, isHandoffFile, mmss, osa, pillSvg, ringSvg, sh } from './util'
 
 
 const usage = atom({ plugin: 'context-band', key: 'usage' } as const, {})
@@ -123,6 +123,41 @@ export const register: Register = on => {
     const left = sent === null ? null : TIMER_MS - (t - sent)
     const timerColor = left === null ? 'subtle' : left <= 0 ? 'error' : left <= 10 * 60 * 1000 ? 'warning' : 'text'
 
+    const onHandoff = async () => {
+      if ((await read($, handoff))?.isRunning || e.props.isWorking) return
+      await update($, handoff, () => ({ isRunning: true }))
+      await $.command.run({ command: 'handoff' })
+    }
+    const handoffLabel = ho?.isRunning ? 'Handing off…' : 'Handoff ↗'
+
+    if (e.surface === 'desktop') {
+      const { Svg } = $.ui.resolve(e)
+      const pill = (label: string, pct?: number) => (
+        <Box key={label} flexDirection="column">
+          <Box flexDirection="row" gap={1}>
+            <Text dimColor>{label}</Text>
+            <Text bold>{pct === undefined ? '–' : `${Math.round(pct)}%`}</Text>
+          </Box>
+          <Svg source={pillSvg(pct ?? 0)} alt={`${label} ${pct === undefined ? 'unknown' : `${Math.round(pct)}%`}`} width={120} height={6} />
+        </Box>
+      )
+      const ringColor = left === null ? '#9ca3af' : left <= 0 ? '#ef4444' : left <= 10 * 60 * 1000 ? '#f59e0b' : '#3b82f6'
+      return (
+        <Box flexDirection="row" alignItems="center" justifyContent="space-between" paddingX={1}>
+          <Box flexDirection="row" alignItems="center" gap={3}>
+            {pill('Context', u.context)}
+            {pill('5h', u.fiveHour)}
+            {pill('Week', u.week)}
+            <Box flexDirection="row" alignItems="center" gap={1}>
+              <Svg source={ringSvg(left === null ? 1 : left / TIMER_MS, ringColor)} alt="Idle timer" width={18} height={18} />
+              <Text bold={left !== null}>{left === null ? '59:00' : left <= 0 ? 'expired' : mmss(left)}</Text>
+            </Box>
+          </Box>
+          <Button key="handoff" label={handoffLabel} onPress={onHandoff} />
+        </Box>
+      )
+    }
+
     return (
       <Box>
         {meter('Context', u.context)}
@@ -132,15 +167,7 @@ export const register: Register = on => {
           ⏱ {left === null ? '59:00' : left <= 0 ? '00:00 expired' : `${mmss(left)} left`}
         </Text>
         <Text>   </Text>
-        <Button
-          key="handoff"
-          label={ho?.isRunning ? 'Handing off…' : 'Handoff ↗'}
-          onPress={async () => {
-            if ((await read($, handoff))?.isRunning || e.props.isWorking) return
-            await update($, handoff, () => ({ isRunning: true }))
-            await $.command.run({ command: 'handoff' })
-          }}
-        />
+        <Button key="handoff" label={handoffLabel} onPress={onHandoff} />
       </Box>
     )
   })

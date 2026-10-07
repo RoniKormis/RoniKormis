@@ -53,3 +53,11 @@ test('new window picks up the handoff: /rc, then the continue prompt', async ($,
   expect(commands).toEqual(['remote-control'])
   expect(prompts[0]).toBe('Read now.md first, then continue the work from the handoff at /Users/roni/proj/handoff-1.md')
 })
+
+test('band draws on terminal and desktop with the Handoff button', async ($, on) => {
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'context-band', surface, ...BAND })
+    expect(await ui.find({ key: 'handoff' })).toBeDefined()
+    await ui.unmount()
+  }
+})
