@@ -1,13 +1,15 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, SessionRateLimit } from 'claude-code'
 
-import type { Usage } from '../types'
+import type { Handoff, Usage } from '../types'
+import { bar, isHandoffFile, mmss, osa, sh } from './util'
 
 
 const usage = atom({ plugin: 'context-band', key: 'usage' } as const, {})
 const sentAt = atom({ plugin: 'context-band', key: 'sentAt' } as const, null)
 const now = atom({ plugin: 'context-band', key: 'now' } as const, 0)
 const warned = atom({ plugin: 'context-band', key: 'warned' } as const, false)
+const handoff = atom({ plugin: 'context-band', key: 'handoff' } as const, null as Handoff | null)
 
 const TIMER_MS = 59 * 60 * 1000
 const WARN = 70
@@ -17,16 +19,6 @@ const pick = (limits: SessionRateLimit[], kind: string) =>
   limits.find(l => l.kind === kind)?.percentUsed
 
 const color = (pct: number) => (pct >= DANGER ? 'error' : pct >= WARN ? 'warning' : 'success')
-
-export const bar = (pct: number, cells = 10) => {
-  const full = Math.round((Math.min(100, Math.max(0, pct)) / 100) * cells)
-  return '█'.repeat(full) + '░'.repeat(cells - full)
-}
-
-export const mmss = (ms: number) => {
-  const s = Math.max(0, Math.ceil(ms / 1000))
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-}
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -41,7 +33,45 @@ export const register: Register = on => {
         if (left <= 0 && left > -1000) $.ui.toast('⏱ 59 min since your last message')
       }
     })
-    return next(e)
+    const started = await next(e)
+    const pending = (await $.store.get('pending')) as { path: string; cwd: string; at: number } | undefined
+    if (pending && pending.cwd === (await $.session.cwd()) && (await $.clock.now()) - pending.at < 5 * 60 * 1000) {
+      await $.store.delete('pending')
+      $.clock.after(1500, async () => {
+        await $.command.run({ command: 'remote-control' })
+        await $.prompt.submit({
+          text: `Read now.md first, then continue the work from the handoff at ${pending.path}`,
+          asUser: true,
+        })
+      })
+    }
+    return started
+  })
+
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    if (e.tool === 'Write' && ran.isError !== true && isHandoffFile(e.file_path)) {
+      const ho = await read($, handoff)
+      if (ho?.isRunning) await update($, handoff, () => ({ ...ho, path: e.file_path }))
+    }
+    return ran
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    const done = await next(e)
+    const ho = await read($, handoff)
+    if (e.agentId !== undefined || !ho?.isRunning) return done
+    await update($, handoff, () => null)
+    if (!ho.path) {
+      $.ui.toast('Handoff: no handoff .md file was written, nothing launched', { timeoutMs: 8000 })
+      return done
+    }
+    const cwd = await $.session.cwd()
+    await $.store.set('pending', { path: ho.path, cwd, at: await $.clock.now() })
+    const script = `tell application "Terminal"\n  activate\n  do script "${osa(`cd ${sh(cwd)} && claude`)}"\nend tell`
+    const r = await $.process.run(['osascript', '-e', script])
+    $.ui.toast(r.exitCode === 0 ? 'Handoff: new Terminal window opened' : `Handoff: could not open Terminal (${r.stderr.trim()})`, { timeoutMs: 8000 })
+    return done
   })
 
   on('prompt.submit', async ($, e, next) => {
@@ -70,7 +100,8 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const ho = await read($, handoff)
     const u = await read($, usage)
     const sent = await read($, sentAt)
     const t = await read($, now)
@@ -100,6 +131,16 @@ export const register: Register = on => {
         <Text color={timerColor}>
           ⏱ {left === null ? '59:00' : left <= 0 ? '00:00 expired' : `${mmss(left)} left`}
         </Text>
+        <Text>   </Text>
+        <Button
+          key="handoff"
+          label={ho?.isRunning ? 'Handing off…' : 'Handoff ↗'}
+          onPress={async () => {
+            if ((await read($, handoff))?.isRunning || e.props.isWorking) return
+            await update($, handoff, () => ({ isRunning: true }))
+            await $.command.run({ command: 'handoff' })
+          }}
+        />
       </Box>
     )
   })

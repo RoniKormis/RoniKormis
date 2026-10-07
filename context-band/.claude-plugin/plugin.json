@@ -1,1 +1,1 @@
-{ "name": "context-band", "version": "0.1.0", "description": "Context, 5h and weekly usage bars plus a 59-min idle timer above the prompt", "types": "./types/index.d.ts" }
+{ "name": "context-band", "version": "0.2.0", "description": "Context, 5h and weekly usage bars, a 59-min idle timer and a one-click Handoff button above the prompt", "types": "./types/index.d.ts" }

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, mmss } from '../hooks/register'
+import { bar, mmss } from '../hooks/util'
 
 test('bar and timer format', async () => {
   expect(bar(0)).toBe('░░░░░░░░░░')

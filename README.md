@@ -11,3 +11,11 @@ Install once (user scope = every session on this machine):
 ```
 
 Answer `y` to add the marketplace, then pick the user scope.
+
+### Handoff button
+
+Press **Handoff ↗** in the band (when Claude is idle). It runs `/handoff`, takes the `*handoff*.md` file that run writes, opens a new Terminal window in the same folder, starts `claude`, runs `/remote-control`, and sends: "Read now.md first, then continue the work from the handoff at <path>". The old window stays open.
+
+The first time, macOS asks to let Claude Code control Terminal: allow it.
+
+Update an existing install with `/plugin update context-band` (or reinstall).
