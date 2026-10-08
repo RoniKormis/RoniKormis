@@ -9,7 +9,12 @@ const usage = atom({ plugin: 'context-band', key: 'usage' } as const, {})
 const sentAt = atom({ plugin: 'context-band', key: 'sentAt' } as const, null)
 const now = atom({ plugin: 'context-band', key: 'now' } as const, 0)
 const warned = atom({ plugin: 'context-band', key: 'warned' } as const, false)
+const quiet = atom({ plugin: 'context-band', key: 'quiet' } as const, false)
 const handoff = atom({ plugin: 'context-band', key: 'handoff' } as const, null as Handoff | null)
+
+const QUIET_PROMPT = `Quiet mode is on: the user does not want running commentary.
+Work silently. Do not narrate steps, plans, progress, or what you are about to do.
+Only write to the user when (1) you need their input or a decision, (2) something is blocked or failed in a way they must act on, or (3) the task is finished, with a short summary of the outcome. Keep those messages brief.`
 
 const TIMER_MS = 59 * 60 * 1000
 const WARN = 70
@@ -98,6 +103,18 @@ export const register: Register = on => {
     return next(e)
   })
 
+  on('prompt.compose', async ($, e, next) => {
+    const composed = await next(e)
+    if (!(await read($, quiet))) return composed
+    return { sections: [...composed.sections, { id: 'context-band:quiet', text: QUIET_PROMPT, scope: 'session' as const }] }
+  })
+
+  on('ui.render', { component: ['ToolUse', 'ToolGroup', 'ToolResult', 'ToolProgress'] }, async ($, e, next) => {
+    if (!(await read($, quiet))) return next(e)
+    const { Box } = $.ui.resolve(e)
+    return <Box display="none" />
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
@@ -129,6 +146,18 @@ export const register: Register = on => {
       await $.command.run({ command: 'handoff' })
     }
     const handoffLabel = ho?.isRunning ? 'Handing off…' : 'Handoff ↗'
+    const isQuiet = await read($, quiet)
+    const quietButton = (
+      <Button
+        key="quiet"
+        label={isQuiet ? 'Quiet ● on' : 'Quiet ○ off'}
+        onPress={async () => {
+          const isOn = !(await read($, quiet))
+          await update($, quiet, () => isOn)
+          $.ui.toast(isOn ? 'Quiet mode on: Claude only writes when it needs you or is done' : 'Quiet mode off: full output again')
+        }}
+      />
+    )
 
     if (e.surface === 'desktop') {
       const { Svg } = $.ui.resolve(e)
@@ -153,7 +182,10 @@ export const register: Register = on => {
               <Text bold={left !== null}>{left === null ? '59:00' : left <= 0 ? 'expired' : mmss(left)}</Text>
             </Box>
           </Box>
-          <Button key="handoff" label={handoffLabel} onPress={onHandoff} />
+          <Box flexDirection="row" gap={1}>
+            {quietButton}
+            <Button key="handoff" label={handoffLabel} onPress={onHandoff} />
+          </Box>
         </Box>
       )
     }
@@ -167,6 +199,8 @@ export const register: Register = on => {
           ⏱ {left === null ? '59:00' : left <= 0 ? '00:00 expired' : `${mmss(left)} left`}
         </Text>
         <Text>   </Text>
+        {quietButton}
+        <Text> </Text>
         <Button key="handoff" label={handoffLabel} onPress={onHandoff} />
       </Box>
     )

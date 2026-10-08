@@ -19,3 +19,7 @@ Press **Handoff ↗** in the band (when Claude is idle). It runs `/handoff`, tak
 The first time, macOS asks to let Claude Code control Terminal: allow it.
 
 Update an existing install with `/plugin update context-band` (or reinstall).
+
+### Quiet button
+
+**Quiet ○ off / ● on** toggles quiet mode for the session. On: Claude is told to work silently and only write when it needs your input, is blocked, or is done (with a short summary), and tool/agent/progress rows are hidden from the transcript. Press again to get full output back.
